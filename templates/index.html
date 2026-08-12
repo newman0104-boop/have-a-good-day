@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Пожелание дня</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='style.css') }}"
+    >
+
+</head>
+
+
+<body>
+
+    <main class="app">
+
+        <button
+            id="wishButton"
+            class="wish-button"
+            type="button"
+        >
+            Пожелание дня
+        </button>
+
+
+        <div
+            id="status"
+            class="status"
+            aria-live="polite"
+        ></div>
+
+
+        <div
+            id="wishCard"
+            class="wish-card"
+            aria-live="polite"
+        ></div>
+
+    </main>
+
+
+    <script>
+
+        const button =
+            document.getElementById("wishButton");
+
+        const status =
+            document.getElementById("status");
+
+        const card =
+            document.getElementById("wishCard");
+
+
+        button.addEventListener(
+            "click",
+            async () => {
+
+                // Блокируем кнопку,
+                // пока идёт запрос.
+
+                button.disabled = true;
+
+                button.textContent =
+                    "Готовим...";
+
+
+                // Прячем предыдущее пожелание.
+
+                card.classList.remove(
+                    "visible"
+                );
+
+
+                status.textContent =
+                    "Готовим пожелание...";
+
+                status.classList.add(
+                    "visible",
+                    "loading"
+                );
+
+
+                try {
+
+                    const response =
+                        await fetch(
+                            "/api/wish",
+                            {
+                                method: "POST",
+
+                                headers: {
+                                    "Content-Type":
+                                        "application/json"
+                                }
+                            }
+                        );
+
+
+                    if (!response.ok) {
+                        throw new Error(
+                            `HTTP error: ${response.status}`
+                        );
+                    }
+
+
+                    const data =
+                        await response.json();
+
+
+                    card.textContent =
+                        data.wish;
+
+
+                    status.classList.remove(
+                        "loading"
+                    );
+
+
+                    if (data.ok) {
+
+                        status.classList.remove(
+                            "visible"
+                        );
+
+                    } else {
+
+                        status.textContent =
+                            "Сегодня магия немного задерживается. " +
+                            "Вот запасное пожелание для тебя.";
+
+                        status.classList.add(
+                            "visible"
+                        );
+
+                    }
+
+
+                    setTimeout(
+                        () => {
+
+                            card.classList.add(
+                                "visible"
+                            );
+
+                        },
+                        100
+                    );
+
+
+                } catch (error) {
+
+                    console.error(
+                        "Wish request error:",
+                        error
+                    );
+
+
+                    card.textContent =
+                        "Пусть сегодняшний день подарит тебе " +
+                        "хорошее настроение и много приятных моментов.";
+
+
+                    status.classList.remove(
+                        "loading"
+                    );
+
+
+                    status.textContent =
+                        "Сегодня магия немного задерживается. " +
+                        "Но доброе пожелание всё равно нашлось.";
+
+
+                    status.classList.add(
+                        "visible"
+                    );
+
+
+                    card.classList.add(
+                        "visible"
+                    );
+
+
+                } finally {
+
+                    button.disabled = false;
+
+                    button.textContent =
+                        "Пожелание дня";
+
+                }
+
+            }
+        );
+
+    </script>
+
+</body>
+
+</html>
