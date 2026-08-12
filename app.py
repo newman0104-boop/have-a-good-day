@@ -11,7 +11,7 @@ from flask import Flask, jsonify, render_template
 
 
 # ============================================================
-# APP
+# FLASK APP
 # ============================================================
 
 app = Flask(__name__)
@@ -28,10 +28,18 @@ GIGACHAT_MODEL = "GigaChat-2"
 REQUEST_TIMEOUT = 30
 
 
-# Получаем секреты из переменных окружения.
+# ============================================================
+# ENVIRONMENT VARIABLES
+# ============================================================
+
+# Секреты получаем из переменных окружения Amvera.
 # В GitHub реальные ключи НЕ храним.
 
-GIGACHAT_AUTH_KEY = os.getenv("GIGACHAT_AUTH_KEY", "").strip()
+GIGACHAT_AUTH_KEY = os.getenv(
+    "GIGACHAT_AUTH_KEY",
+    ""
+).strip()
+
 GIGACHAT_SCOPE = os.getenv(
     "GIGACHAT_SCOPE",
     "GIGACHAT_API_PERS"
@@ -42,11 +50,8 @@ GIGACHAT_SCOPE = os.getenv(
 # SSL
 # ============================================================
 
-# В текущем прототипе используется verify=False,
-# поэтому отключаем соответствующее предупреждение.
-#
-# В production в дальнейшем лучше подключить
-# корректный CA certificate GigaChat.
+# GigaChat может выдавать ошибку проверки сертификата.
+# Пока используем verify=False, как в рабочей версии Colab.
 
 urllib3.disable_warnings(
     urllib3.exceptions.InsecureRequestWarning
@@ -54,7 +59,7 @@ urllib3.disable_warnings(
 
 
 # ============================================================
-# FALLBACK-ПОЖЕЛАНИЯ
+# FALLBACK WISHES
 # ============================================================
 
 FALLBACK_WISHES = [
@@ -97,31 +102,25 @@ TOKEN_LOCK = threading.Lock()
 
 
 # ============================================================
-# GIGACHAT ACCESS TOKEN
+# GET GIGACHAT ACCESS TOKEN
 # ============================================================
 
 def get_access_token():
-    """
-    Возвращает действующий Access Token GigaChat.
-
-    Если токена нет или срок его действия подходит к концу,
-    автоматически получает новый.
-    """
 
     if not GIGACHAT_AUTH_KEY:
         raise RuntimeError(
-            "Не задана переменная окружения GIGACHAT_AUTH_KEY"
+            "Не задан GIGACHAT_AUTH_KEY"
         )
 
     if not GIGACHAT_SCOPE:
         raise RuntimeError(
-            "Не задана переменная окружения GIGACHAT_SCOPE"
+            "Не задан GIGACHAT_SCOPE"
         )
 
     with TOKEN_LOCK:
 
-        # Используем существующий токен,
-        # если он ещё действителен.
+        # Если токен ещё действует,
+        # используем его повторно.
 
         if (
             TOKEN_CACHE["token"]
@@ -130,10 +129,17 @@ def get_access_token():
             return TOKEN_CACHE["token"]
 
         headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "application/json",
-            "RqUID": str(uuid.uuid4()),
-            "Authorization": f"Basic {GIGACHAT_AUTH_KEY}",
+            "Content-Type":
+                "application/x-www-form-urlencoded",
+
+            "Accept":
+                "application/json",
+
+            "RqUID":
+                str(uuid.uuid4()),
+
+            "Authorization":
+                f"Basic {GIGACHAT_AUTH_KEY}",
         }
 
         data = {
@@ -148,6 +154,15 @@ def get_access_token():
             verify=False
         )
 
+        if response.status_code != 200:
+
+            print(
+                "GigaChat OAuth error:",
+                response.status_code,
+                response.text,
+                flush=True
+            )
+
         response.raise_for_status()
 
         result = response.json()
@@ -155,14 +170,15 @@ def get_access_token():
         token = result.get("access_token")
 
         if not token:
+
             raise RuntimeError(
                 "GigaChat не вернул access_token"
             )
 
         TOKEN_CACHE["token"] = token
 
-        # Access Token действует около 30 минут.
-        # Обновляем его немного заранее.
+        # Токен действует около 30 минут.
+        # Обновляем немного раньше.
 
         TOKEN_CACHE["expires_at"] = (
             time.time() + 25 * 60
@@ -201,10 +217,6 @@ BLOCKED_WORDS = [
 
 
 def is_safe_wish(text):
-    """
-    Простая дополнительная проверка
-    сгенерированного пожелания.
-    """
 
     if not text:
         return False
@@ -220,6 +232,7 @@ def is_safe_wish(text):
     lower_text = text.lower()
 
     for word in BLOCKED_WORDS:
+
         if word in lower_text:
             return False
 
@@ -231,10 +244,6 @@ def is_safe_wish(text):
 # ============================================================
 
 def get_fallback_wish():
-    """
-    Возвращает локальное пожелание,
-    если GigaChat временно недоступен.
-    """
 
     available = [
         wish
@@ -259,12 +268,12 @@ def get_fallback_wish():
 WISH_PROMPT = """
 Ты — генератор добрых пожеланий на день.
 
-Придумай одно короткое, теплое, позитивное и
-мотивирующее пожелание на день.
+Придумай одно короткое, теплое, позитивное
+и мотивирующее пожелание на день.
 
 Требования:
-- только один текст пожелания;
 - только русский язык;
+- только одно пожелание;
 - без заголовка;
 - без кавычек;
 - без списков;
@@ -296,24 +305,28 @@ WISH_PROMPT = """
 
 
 # ============================================================
-# GIGACHAT
+# GENERATE WISH
 # ============================================================
 
 def generate_wish_from_gigachat():
-    """
-    Генерирует новое пожелание через GigaChat.
-    """
 
     access_token = get_access_token()
 
     headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-        "Accept": "application/json"
+        "Authorization":
+            f"Bearer {access_token}",
+
+        "Content-Type":
+            "application/json",
+
+        "Accept":
+            "application/json"
     }
 
     payload = {
-        "model": GIGACHAT_MODEL,
+
+        "model":
+            GIGACHAT_MODEL,
 
         "messages": [
             {
@@ -322,9 +335,14 @@ def generate_wish_from_gigachat():
             }
         ],
 
-        "temperature": 0.9,
-        "max_tokens": 150,
-        "stream": False
+        "temperature":
+            0.9,
+
+        "max_tokens":
+            150,
+
+        "stream":
+            False
     }
 
     response = requests.post(
@@ -335,12 +353,22 @@ def generate_wish_from_gigachat():
         verify=False
     )
 
-    # Если access token неожиданно перестал работать,
-    # сбрасываем кеш.
+    # Если токен перестал работать,
+    # очищаем кеш.
 
     if response.status_code == 401:
+
         TOKEN_CACHE["token"] = None
         TOKEN_CACHE["expires_at"] = 0
+
+    if response.status_code != 200:
+
+        print(
+            "GigaChat API error:",
+            response.status_code,
+            response.text,
+            flush=True
+        )
 
     response.raise_for_status()
 
@@ -354,20 +382,24 @@ def generate_wish_from_gigachat():
         .strip()
     )
 
-    # Иногда LLM может вернуть кавычки.
-    # Убираем их.
+    # Убираем кавычки,
+    # если модель их добавила.
 
-    wish = wish.strip('"').strip("'").strip()
+    wish = (
+        wish
+        .strip('"')
+        .strip("'")
+        .strip()
+    )
 
     if not is_safe_wish(wish):
+
         raise ValueError(
             "Пожелание не прошло safety-проверку"
         )
 
-    # Не показываем точный повтор
-    # недавно показанного пожелания.
-
     if wish in recent_wishes:
+
         raise ValueError(
             "Пожелание недавно уже показывалось"
         )
@@ -378,27 +410,32 @@ def generate_wish_from_gigachat():
 
 
 # ============================================================
-# ROUTES
+# MAIN PAGE
 # ============================================================
 
 @app.route("/", methods=["GET"])
 def index():
-    """
-    Главная страница.
-    """
 
-    return render_template("index.html")
+    return render_template(
+        "index.html"
+    )
 
 
-@app.route("/api/wish", methods=["GET", "POST"])
+# ============================================================
+# API
+# ============================================================
+
+@app.route(
+    "/api/wish",
+    methods=["GET", "POST"]
+)
 def api_wish():
-    """
-    API для получения нового пожелания.
-    """
 
     try:
 
-        wish = generate_wish_from_gigachat()
+        wish = (
+            generate_wish_from_gigachat()
+        )
 
         return jsonify({
             "ok": True,
@@ -407,8 +444,8 @@ def api_wish():
 
     except Exception as e:
 
-        # Ошибка пишется только в серверный лог.
-        # Пользователь её не увидит.
+        # Ошибка выводится в лог Amvera,
+        # но не показывается пользователю.
 
         print(
             "GigaChat error:",
@@ -421,7 +458,8 @@ def api_wish():
 
         return jsonify({
             "ok": False,
-            "error": "GigaChat temporarily unavailable",
+            "error":
+                "GigaChat temporarily unavailable",
             "wish": wish
         })
 
@@ -430,12 +468,11 @@ def api_wish():
 # HEALTH CHECK
 # ============================================================
 
-@app.route("/health", methods=["GET"])
+@app.route(
+    "/health",
+    methods=["GET"]
+)
 def health():
-    """
-    Простой endpoint для проверки,
-    что приложение запущено.
-    """
 
     return jsonify({
         "status": "ok"
@@ -443,18 +480,13 @@ def health():
 
 
 # ============================================================
-# LOCAL START
+# AMVERA START
 # ============================================================
 
 if __name__ == "__main__":
 
-    port = int(
-        os.getenv("PORT", "5000")
-    )
-
     app.run(
         host="0.0.0.0",
-        port=port,
+        port=5000,
         debug=False
     )
-
